@@ -34,4 +34,5 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/{{ github.actor }}/${{ env.APP_NAME }}:${{ env.APP_TAG }}
+          tags: |
+            ghcr.io/{{ github.actor }}/${{ env.APP_NAME }}:${{ env.APP_TAG }}
