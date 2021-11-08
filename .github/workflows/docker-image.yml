@@ -23,7 +23,7 @@ jobs:
       run: docker build . --file Dockerfile --tag ${{ env.NAME }}:$(date +%s)
      
     - name: Login to GHCR
-      run: docker login ghcr.io --username ${{ github.actor }} --password $GHCR_PAT
+      run: docker login ghcr.io --username ${{ github.actor }} --password ${{ secrets.GHCR_PAT }}
      
     - name: Tag
       run: docker tag app ghcr.io/${{ github.actor }}/$NAME:$TAG
