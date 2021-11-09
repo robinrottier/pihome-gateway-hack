@@ -1,0 +1,33 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  APP_NAME: pihome-gateway-hack
+  APP_TAG: latest
+  
+jobs:
+
+  build:
+    name: Build Docker image and push to repositories
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+      
+    - name: Build the Docker image
+      run: docker build . --file Dockerfile --tag $APP_NAME:$APP_TAG
+     
+    - name: Login to GHCR
+      run: docker login ghcr.io --username ${{ github.actor }} --password ${{ secrets.GHCR_PAT }}
+     
+    - name: Tag
+      run: docker tag $APP_NAME ghcr.io/${{ github.actor }}/$APP_NAME:$APP_TAG
+     
+    - name: Push
+      run: docker push ghcr.io/${{ github.actor }}/$APP_NAME:$APP_TAG
+      
