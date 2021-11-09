@@ -48,10 +48,15 @@ mqtt_connected = 0
 def on_connect(client, userdata, flags, rc):
    global mqtt_connected
    mqtt_connected = 1
+   if dbgLevel >= 1:
+	   print("Mqtt connected")
+   mqtt_client_publish("pihome/gateway-recv/connected", nowstr())
 
 def on_disconnect(client, userdata, rc):
    global mqtt_connected
    mqtt_connected = 0
+   if dbgLevel >= 1:
+	   print("Mqtt disconnected")
 
 def on_mqtt_publish2(client,userdata,result):             #create function for callback
     #print("MQTT data published \n")
@@ -63,10 +68,14 @@ mqtt_connected2 = 0
 def on_connect2(client, userdata, flags, rc):
    global mqtt_connected2
    mqtt_connected2 = 1
+   if dbgLevel >= 1:
+	   print("Mqtt2 connected")
 
 def on_disconnect2(client, userdata, rc):
    global mqtt_connected2
    mqtt_connected2 = 0
+   if dbgLevel >= 1:
+	   print("Mqtt2 disconnected")
 
 def mqtt_client_publish(topic, msg):
 	mqtt_op = "entry"
