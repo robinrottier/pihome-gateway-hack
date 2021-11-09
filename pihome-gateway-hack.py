@@ -12,6 +12,8 @@ import paho.mqtt.client as paho
 # Debug print to screen configuration
 dbgLevel = 1 	# 0-off, 1-info, 2-detailed, 3-all
 
+desc = "PiHome Gateway Hack v1"
+
 # Get the local ip address
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 s.connect(('google.com', 0))
@@ -23,11 +25,18 @@ gatewaylocation = "192.168.86.31"                     # ip address or serial por
 gatewayport = 5003                        # UDP port or bound rate for MySensors gateway
 gatewaytimeout = 60                    # Connection timeout in Seconds
 
-
-mqtt_server = "192.168.86.38" #"emonpi"
+if base_ip.group(0) == "192.168.86.":
+	mqtt_server = "has1"
+else:
+	mqtt_server = "mosquitto"
 mqtt_port = 1883
-mqtt_user = "emonpi"
-mqtt_pass = "emonpimqtt2016"
+mqtt_user = ""
+mqtt_pass = ""
+
+mqtt2_server = "192.168.86.38" #"emonpi"
+mqtt2_port = 1883
+mqtt2_user = "emonpi"
+mqtt2_pass = "emonpimqtt2016"
 
 def on_mqtt_publish(client,userdata,result):             #create function for callback
     #print("MQTT data published \n")
@@ -43,6 +52,21 @@ def on_connect(client, userdata, flags, rc):
 def on_disconnect(client, userdata, rc):
    global mqtt_connected
    mqtt_connected = 0
+
+def on_mqtt_publish2(client,userdata,result):             #create function for callback
+    #print("MQTT data published \n")
+    pass
+
+global mqtt_connected2
+mqtt_connected2 = 0
+
+def on_connect2(client, userdata, flags, rc):
+   global mqtt_connected2
+   mqtt_connected2 = 1
+
+def on_disconnect2(client, userdata, rc):
+   global mqtt_connected2
+   mqtt_connected2 = 0
 
 def mqtt_client_publish(topic, msg):
 	mqtt_op = "entry"
@@ -60,6 +84,24 @@ def mqtt_client_publish(topic, msg):
 		print("MQTT exception on "+mqtt_op)
 		print(format(e))
 
+def mqtt_client_publish2(topic, msg):
+	if mqtt2_server:
+		mqtt_op = "entry2"
+		try:
+			global mqtt_connected2
+			if mqtt_connected2 == 0:
+				if mqtt2_user:
+					mqtt_op = "pw-set"
+					mqtt_client2.username_pw_set(mqtt2_user, mqtt2_pass)
+					mqtt_op = "connect"
+					mqtt_client2.connect(mqtt2_server, mqtt2_port)
+			mqtt_op = "publish"
+			mqtt_client2.publish(topic, msg)
+			mqtt_op = "exit"
+		except Exception as e:
+			print("MQTT 2 exception on "+mqtt_op)
+			print(format(e))
+
 mqtt_client = paho.Client("pihome-gateway-to-mqtt")
 mqtt_client.on_connect = on_connect
 mqtt_client.on_disconnect = on_disconnect
@@ -67,15 +109,25 @@ mqtt_client.on_publish = on_mqtt_publish
 mqtt_client.username_pw_set(mqtt_user, mqtt_pass)
 mqtt_client.connect(mqtt_server, mqtt_port)
 
+mqtt_client_publish("pihome/gateway-recv/desc", desc)
 mqtt_client_publish("pihome/gateway-recv/started", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
+if mqtt2_server:
+	mqtt_client2 = paho.Client("pihome-gateway-to-mqtt-2")
+	mqtt_client2.on_connect = on_connect2
+	mqtt_client2.on_disconnect = on_disconnect2
+	mqtt_client2.on_publish = on_mqtt_publish2
+	if mqtt2_user:
+		mqtt_client2.username_pw_set(mqtt2_user, mqtt2_pass)
+	mqtt_client2.connect(mqtt2_server, mqtt2_port)
+
+	#mqtt_client_publish("pihome/gateway-recv/started", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+
 mqtt_client_summaryTopic = "emon/pihome"
-#for nodeid in ["20", "21", "30"]:
-#	for suffix in ["", "_0", "_battery_V", "_battery_level"]:
-#		mqtt_client_publish("%s/%s%s" % (mqtt_client_summaryTopic, nodeid, suffix), " ")
 
 if dbgLevel >= 1:
 	print("Local ip:      ", ip)
+	print("Base  ip:      ", base_ip)
 	print("Gateway Type:  ", "Wifi/Ethernet")
 	print("IP Address:    ", gatewaylocation)
 	print("UDP Port:      ", gatewayport)
@@ -139,6 +191,9 @@ def readFromGatewayLoop():
 					print("Gateway close aborted (thats not too bad")
 		time.sleep(10)
 
+def nowstr():
+	return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
 def readFromGateway(gw):
 
 	mc = 0
@@ -155,6 +210,8 @@ def readFromGateway(gw):
 
 		in_str = gw.read_until(b'\n', timeout=1) # Here is receiving part of the code for Wifi
 
+		now = nowstr()
+
 		in_str = in_str.decode('utf-8')
 		in_str = in_str.replace("\n", "")
 		in_str = in_str.replace("\r", "")
@@ -162,12 +219,16 @@ def readFromGateway(gw):
 			if dbgLevel >= 2:
 				print(".", end="")
 			lastwasdot = True
+			mqtt_client_publish("pihome/gateway-recv/loop", now)
 		else:
 			if dbgLevel >= 2:
 				if lastwasdot:
 					print("")
 				print("Received:"+str(mc)+": '"+in_str+"'")
 			lastwasdot = False
+
+			mqtt_client_publish("pihome/gateway-recv/last_update", now)
+			mqtt_client_publish("pihome/gateway-recv/last_read", in_str)
 
 			if len(in_str) > 50:
 				print("Line length exceeds 50 - ignoring")
@@ -218,12 +279,15 @@ def readFromGateway(gw):
 					print(node.ljust(10),str(child_sensor_id).ljust(3),m.ljust(12),payload)
 
 					mqtt_client_publish('pihome/sensors/%s/%s' % (node_id, m), payload)
+					mqtt_client_publish('pihome/sensors/%s/last_update' % (node_id), now)
 
-					if m == "temperature":
-						mqtt_client_publish('%s/%s' % (mqtt_client_summaryTopic, node_id), payload)
-						mqtt_client_publish('%s/%s_0' % (mqtt_client_summaryTopic, node_id), payload)
-					else:
-						mqtt_client_publish('%s/%s_%s' % (mqtt_client_summaryTopic, node_id, m), payload)
+					mqtt_client_publish('%s/%s_%s' % (mqtt_client_summaryTopic, node_id, m), payload)
 
+					if node_id != "0":
+						if m == "temperature":
+							mqtt_client_publish2('%s/%s' % (mqtt_client_summaryTopic, node_id), payload)
+							mqtt_client_publish2('%s/%s_0' % (mqtt_client_summaryTopic, node_id), payload)
+						else:
+							mqtt_client_publish2('%s/%s_%s' % (mqtt_client_summaryTopic, node_id, m), payload)
 
 readFromGatewayLoop()
