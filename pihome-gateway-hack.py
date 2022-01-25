@@ -26,6 +26,8 @@ gatewaylocation = "192.168.86.31"                     # ip address or serial por
 gatewayport = 5003                        # UDP port or bound rate for MySensors gateway
 gatewaytimeout = 60                    # Connection timeout in Seconds
 
+maxLoopCount = 60*20					# after 20 mins no responses then exit (so can try again)
+
 if base_ip.group(0) == "192.168.86.":
 	mqtt_server = "has1"
 else:
@@ -211,6 +213,7 @@ def readFromGateway(gw):
 
 	mc = 0
 	lastwasdot = False
+	loopCount = 0
 
 	while 1:
 		if len(msgs) > 0:
@@ -232,13 +235,24 @@ def readFromGateway(gw):
 			if dbgLevel >= 2:
 				log(".", end="")
 			lastwasdot = True
+			loopCount = loopCount+1
 			mqtt_client_publish("pihome/gateway-recv/loop", now)
+			mqtt_client_publish("pihome/gateway-recv/loopCount", loopCount)
+
+			# if 5000 loops without receiving then just exit and let retry happen
+			# (maybe socket is blocked or OOM etc)
+			if (loopCount >= maxLoopCount):
+				log("Too many empty responses ...exiting")
+				mqtt_client_publish("pihome/gateway-recv/last_exitDueNoResponse", now)
+				sys.exit(1)
+
 		else:
 			if dbgLevel >= 2:
 				if lastwasdot:
 					log("")
 				log("Received:"+str(mc)+": '"+in_str+"'")
 			lastwasdot = False
+			loopCount = 0
 
 			mqtt_client_publish("pihome/gateway-recv/last_update", now)
 			mqtt_client_publish("pihome/gateway-recv/last_read", in_str)
@@ -308,6 +322,6 @@ try:
 except KeyboardInterrupt:
 	print('Interrupted')
 	try:
-		sys.exit(0)
+		sys.exit(1)
 	except SystemExit:
 		os._exit(0)
